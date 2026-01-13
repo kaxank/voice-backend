@@ -8,18 +8,18 @@ import dotenv from "dotenv";
 dotenv.config({path: "./.env.local"});
 
 
-// Standard categories (you can add more)
-const STANDARD_CATEGORIES = [
-  "Market",
-  "Fatura",
-  "Ulaşım",
-  "Yemek",
-  "Kira",
-  "Alışveriş",
-  "Eğlence",
-  "Sağlık",
-  "Diğer"  // Default category
-];
+const CATEGORY_MAP = {
+  grocery: ["grocery", "market", "pazardan", "manav", "sebze", "meyve"],
+  transport: ["transport", "taxi", "uber", "ulaşım", "otobüs", "metro", "benzin"],
+  bill: ["bill", "fatura", "elektrik", "su", "internet", "telefon"],
+  entertainment: ["entertainment", "netflix", "spotify", "sinema", "oyun", "eğlence"],
+  dining: ["dining", "restaurant", "cafe", "kahve", "yemek"],
+  shopping: ["shopping", "alışveriş", "kıyafet", "elektronik"],
+  health: ["health", "eczane", "ilaç", "doktor", "hastane"],
+  rent: ["rent", "kira"],
+  education: ["education", "kurs", "okul", "eğitim"]
+};
+
 // 🧾 Geçici muhasebe defteri (RAM'de tutulur)
 const expenseStore = {
   // "2026-01": [ { expense }, { expense } ]
@@ -86,38 +86,51 @@ async function analyzeExpense(text) {
       {
         role: "system",
         content: `
-You are a highly attentive personal finance assistant.
+            You are a highly attentive personal finance assistant.
 
-Your task is to extract structured expense data from user text that comes from speech-to-text transcription.
-The transcription may be informal, incomplete, or imperfect.
+            Your task is to extract structured expense data from user text that comes from speech-to-text transcription.
+            The transcription may be informal, incomplete, or imperfect.
 
-IMPORTANT RULES:
+            IMPORTANT RULES:
 
-1. Always try to determine a category.
-2. Never leave "category" as null unless it is absolutely impossible.
-3. If the category is not explicitly mentioned, infer it from context.
-4. If multiple interpretations are possible, choose the most reasonable one
+            1. Always try to determine a category.
+            2. Never leave "category" as null unless it is absolutely impossible.
+            3. If the category is not explicitly mentioned, infer it from context.
 
-If the user mentions a date (like "today", "yesterday", "tomorrow", "12 January", "12/01/2026"),
-extract it as a string field called "dateText".
-If no date is mentioned, set "dateText" to null.
+            Categories:
+            - grocery (food, market, vegetables, supermarket, pazardan, manav)
+            - transport (taxi, uber, bus, metro, ulaşım, yol, benzin)
+            - bill (electricity, water, internet, phone, kira, fatura)
+            - entertainment (netflix, spotify, sinema, oyun, eğlence)
+            - dining (restaurant, cafe, yemek, kahve)
+            - shopping (clothes, electronics, alışveriş)
+            - health (pharmacy, doctor, hastane, ilaç)
+            - rent (rent, kira)
+            - education (kurs, okul, eğitim)
+
+            7. If nothing matches perfectly, create a new category and add it to the list above.
 
 
-Return ONLY valid JSON.
-Do not explain anything.
-Do not use markdown.
-Do not add extra text.
+            If the user mentions a date (like "today", "yesterday", "tomorrow", "12 January", "12/01/2026"),
+            extract it as a string field called "dateText".
+            If no date is mentioned, set "dateText" to null.
 
-Schema:
-{
-  "dateText": string | null,
-  "category": string,
-  "amount": number | null,
-  "currency": "TRY",
-  "paymentMethod": "cash" | "credit_card" | "debit_card" | null,
-  "description": string | null,
-  "type": "expense"
-}
+
+            Return ONLY valid JSON.
+            Do not explain anything.
+            Do not use markdown.
+            Do not add extra text.
+
+            Schema:
+            {
+            "dateText": string | null,
+            "category": string,
+            "amount": number | null,
+            "currency": "TRY",
+            "paymentMethod": "cash" | "credit_card" | "debit_card" | null,
+            "description": string | null,
+            "type": "expense"
+            }
         `,
       },
       {
@@ -127,7 +140,8 @@ Schema:
     ],
     temperature: 0,
   });
-
+  const aiResponse = JSON.parse(response.choices[0].message.content);
+  console.log("🤖 AI'dan gelen kategori:", aiResponse.category); 
   return JSON.parse(response.choices[0].message.content);
 }
 
@@ -169,47 +183,52 @@ function resolveDate(dateText) {
 
 
 
-// Function to find the best matching category,if not add it to STANDARD_CATEGORIES array
 function findMatchingCategory(aiCategory) {
-    console.log("🚀 AI Category:", aiCategory);
   if (!aiCategory) return "Diğer";
   
   const lowerAiCategory = aiCategory.toLowerCase('tr-TR');
   
-  // Check for direct match
-  const directMatch = STANDARD_CATEGORIES.find(cat => 
-    cat.toLowerCase('tr-TR') === lowerAiCategory
-  );
+  // First, check if the category exists as a key in CATEGORY_MAP
+  if (CATEGORY_MAP.hasOwnProperty(lowerAiCategory)) {
+    return lowerAiCategory.charAt(0).toUpperCase() + lowerAiCategory.slice(1);
+  }
   
-  if (directMatch) return directMatch;
+  // If not, check if it's in any of the value arrays
+  for (const [category, aliases] of Object.entries(CATEGORY_MAP)) {
+    if (aliases.some(alias => 
+      lowerAiCategory.includes(alias.toLowerCase('tr-TR')) || 
+      alias.toLowerCase('tr-TR').includes(lowerAiCategory)
+    )) {
+      return category.charAt(0).toUpperCase() + category.slice(1);
+    }
+  }
   
-  // Check for partial matches
-  const partialMatch = STANDARD_CATEGORIES.find(cat => 
-    lowerAiCategory.includes(cat.toLowerCase('tr-TR')) || 
-    cat.toLowerCase('tr-TR').includes(lowerAiCategory)
-  );
-  
-  if (partialMatch) return partialMatch;
-  
-  // If no match found, add the new category to STANDARD_CATEGORIES
-  const newCategory = aiCategory.charAt(0).toUpperCase() + aiCategory.slice(1).toLowerCase();
-  STANDARD_CATEGORIES.push(newCategory);
+  // If we get here, it's a new category
+  // Add it to the map with the category name as its own alias
+  const newCategory = lowerAiCategory;
+  CATEGORY_MAP[newCategory] = [newCategory];
   console.log(`🌟 Yeni kategori eklendi: ${newCategory}`);
   
-  return newCategory;
+  return newCategory.charAt(0).toUpperCase() + newCategory.slice(1);
 }
+
+function getFormattedCategory(category) {
+  if (!category) return "Diğer";
+  return category.charAt(0).toUpperCase() + category.slice(1).toLowerCase();
+}
+
 
 // In your normalizeExpense function, update the category handling:
 function normalizeExpense(raw) {
   // Get the AI's category suggestion
   const aiCategory = raw.category || "Diğer";
   
-  // Find matching category or use the AI's suggestion
+  // Find matching category or create a new one
   const category = findMatchingCategory(aiCategory);
   
   return {
     date: resolveDate(raw.dateText),
-    category: category,
+    category: getFormattedCategory(category),
     amount: typeof raw.amount === "number" 
       ? raw.amount 
       : Number(String(raw.amount).replace(/[^\d]/g, "")) || 0,
@@ -252,7 +271,7 @@ app.post("/transcribe", upload.single("audio"), async (req, res) => {
     console.log("📅 Month key:", monthKey);
     const monthlyTotal = calculateMonthlyTotal(monthKey);
     console.log("📊 Monthly total:", monthlyTotal);
-    console.log("📊 STANDARD_CATEGORIES:", STANDARD_CATEGORIES);
+    console.log("📊 STANDARD_CATEGORIES:", CATEGORY_MAP);
     
 
 
