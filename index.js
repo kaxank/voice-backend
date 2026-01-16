@@ -5,8 +5,12 @@ import fs from "fs";
 import OpenAI from "openai";
 import cors from "cors";
 import dotenv from "dotenv";
+import { createClient } from '@supabase/supabase-js';
+
 dotenv.config({path: "./.env.local"});
 
+
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
 
 const CATEGORY_MAP = {
   grocery: ["grocery", "market", "pazardan", "manav", "sebze", "meyve"],
@@ -45,6 +49,63 @@ function normalizeAmount(amount) {
   return 0;
 }
 
+async function saveExpense(expense) {
+  // Veritabanına uygun formata dönüştür
+  const dbExpense = {
+    date: expense.date,
+    category: expense.category,
+    amount: expense.amount,
+    currency: expense.currency,
+    payment_method: expense.paymentMethod, // Veritabanındaki sütun adına dikkat edin
+    description: expense.description || null,
+    created_at: new Date().toISOString()
+  };
+
+  console.log("📝 Veritabanına kaydediliyor:", dbExpense);
+
+  try {
+    const { data, error } = await supabase
+      .from('expenses')
+      .insert([dbExpense])
+      .select();
+
+    if (error) {
+      console.error('❌ Veritabanı hatası:', error);
+      return { error };
+    }
+
+    console.log('✅ Başarıyla kaydedildi:', data);
+    return { data };
+  } catch (err) {
+    console.error('❌ Beklenmeyen hata:', err);
+    return { error: err };
+  }
+}
+
+async function getExpenses(month, year) {
+  const startDate = `${year}-${month.padStart(2, '0')}-01`;
+  const endDate = `${year}-${month.padStart(2, '0')}-31`;
+
+  try {
+    const { data, error } = await supabase
+      .from('expenses')
+      .select('*')
+      .gte('date', startDate)
+      .lte('date', endDate);
+
+    if (error) {
+      console.error('❌ Veri çekme hatası:', error);
+      return { error };
+    }
+
+    console.log('📊 Veriler başarıyla çekildi:', data);
+    return { data };
+  } catch (err) {
+    console.error('❌ Beklenmeyen hata:', err);
+    return { error: err };
+  }
+}
+/*
 function saveExpense(expense) {
   const monthKey = getMonthKey(expense.date);
 
@@ -59,7 +120,20 @@ function calculateMonthlyTotal(monthKey) {
   const expenses = expenseStore[monthKey] || [];
   return expenses.reduce((sum, e) => sum + e.amount, 0);
 }
+*/
+async function calculateMonthlyTotal(monthKey) {
+  const [year, month] = monthKey.split('-');
+  const { data, error } = await getExpenses(month, year);
 
+  if (error) {
+    console.error('❌ Aylık toplam hesaplanırken hata:', error);
+    return 0;
+  }
+
+  const total = data?.reduce((sum, e) => sum + (e.amount || 0), 0) || 0;
+  console.log(`💰 ${monthKey} toplam harcama:`, total);
+  return total;
+}
 
 
 const app = express();
@@ -91,6 +165,8 @@ async function analyzeExpense(text) {
             Your task is to extract structured expense data from user text that comes from speech-to-text transcription.
             The transcription may be informal, incomplete, or imperfect.
 
+
+
             IMPORTANT RULES:
 
             1. Always try to determine a category.
@@ -111,9 +187,12 @@ async function analyzeExpense(text) {
             7. If nothing matches perfectly, create a new category and add it to the list above.
 
 
+
             If the user mentions a date (like "today", "yesterday", "tomorrow", "12 January", "12/01/2026"),
             extract it as a string field called "dateText".
             If no date is mentioned, set "dateText" to null.
+
+
 
 
             Return ONLY valid JSON.
@@ -266,12 +345,16 @@ app.post("/transcribe", upload.single("audio"), async (req, res) => {
     console.log("📊 Raw expense:", rawExpense);
     console.log("📊 Normalized expense:", expense);
 
-    saveExpense(expense);
+    const { error } = await saveExpense(expense);
+    if (error) {
+      console.error('❌ Hata oluştu:', error);
+    }
+
     const monthKey = getMonthKey(expense.date);
     console.log("📅 Month key:", monthKey);
-    const monthlyTotal = calculateMonthlyTotal(monthKey);
+    const monthlyTotal = await calculateMonthlyTotal(monthKey); // await ekledik
     console.log("📊 Monthly total:", monthlyTotal);
-    console.log("📊 STANDARD_CATEGORIES:", CATEGORY_MAP);
+    //console.log("📊 STANDARD_CATEGORIES:", CATEGORY_MAP);
     
 
 
