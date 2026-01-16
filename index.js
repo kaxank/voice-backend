@@ -2,20 +2,15 @@ import express from "express";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
-import OpenAI from "openai";
 import cors from "cors";
-import dotenv from "dotenv";
-import { createClient } from '@supabase/supabase-js';
+import { supabase } from './src/config/supabase.js';
+import { openai } from './src/config/openai.js';
 
-dotenv.config({path: "./.env.local"});
+
+
 const app = express();
 app.use(cors());
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
-
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
 
 const CATEGORY_MAP = {
   grocery: ["grocery", "market", "pazardan", "manav", "sebze", "meyve"],
