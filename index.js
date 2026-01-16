@@ -8,7 +8,12 @@ import dotenv from "dotenv";
 import { createClient } from '@supabase/supabase-js';
 
 dotenv.config({path: "./.env.local"});
+const app = express();
+app.use(cors());
 
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
 
@@ -97,30 +102,15 @@ async function getExpenses(month, year) {
       console.error('❌ Veri çekme hatası:', error);
       return { error };
     }
-
-    console.log('📊 Veriler başarıyla çekildi:', data);
+  
+    //console.log('📊 Veriler başarıyla çekildi:', data);
     return { data };
   } catch (err) {
     console.error('❌ Beklenmeyen hata:', err);
     return { error: err };
   }
 }
-/*
-function saveExpense(expense) {
-  const monthKey = getMonthKey(expense.date);
 
-  if (!expenseStore[monthKey]) {
-    expenseStore[monthKey] = [];
-  }
-
-  expenseStore[monthKey].push(expense);
-}
-
-function calculateMonthlyTotal(monthKey) {
-  const expenses = expenseStore[monthKey] || [];
-  return expenses.reduce((sum, e) => sum + e.amount, 0);
-}
-*/
 async function calculateMonthlyTotal(monthKey) {
   const [year, month] = monthKey.split('-');
   const { data, error } = await getExpenses(month, year);
@@ -136,12 +126,7 @@ async function calculateMonthlyTotal(monthKey) {
 }
 
 
-const app = express();
-app.use(cors());
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
 
 const storage = multer.diskStorage({
   destination: "uploads/",
@@ -154,6 +139,42 @@ const storage = multer.diskStorage({
 const upload = multer({ storage });
 
 async function analyzeExpense(text) {
+  console.log("📝 Analiz ediliyor:", text);
+  
+  // First, extract the amount from the text
+  const amountMatch = text.match(/\d+/);
+  let amount = amountMatch ? parseInt(amountMatch[0], 10) : null;
+  
+  // If no digits found, try to parse Turkish number words
+  if (!amount) {
+    const numberWords = {
+      'bir': 1, 'iki': 2, 'üç': 3, 'dört': 4, 'beş': 5,
+      'altı': 6, 'yedi': 7, 'sekiz': 8, 'dokuz': 9, 'on': 10,
+      'yirmi': 20, 'otuz': 30, 'kırk': 40, 'elli': 50,
+      'altmış': 60, 'yetmiş': 70, 'seksen': 90, 'doksan': 90,
+      'yüz': 100, 'bin': 1000, 'milyon': 1000000
+    };
+    // Simple Turkish number word parser
+    const words = text.toLowerCase().split(/\s+/);
+    let current = 0;
+    let total = 0;
+    
+    for (const word of words) {
+      const num = numberWords[word];
+      if (num !== undefined) {
+        if (num < 100) {
+          current += num;
+        } else if (num === 100) {
+          current = current === 0 ? 100 : current * 100;
+        } else {
+          current = (current === 0 ? 1 : current) * num;
+          total += current;
+          current = 0;
+        }
+      }
+    }
+    amount = total + current || null;
+  }
   const response = await openai.chat.completions.create({
     model: "gpt-4o-mini",
     messages: [
@@ -166,25 +187,28 @@ async function analyzeExpense(text) {
             The transcription may be informal, incomplete, or imperfect.
 
 
-
+            - date: if mentioned, otherwise use today's date
+            - category: 
+              -- grocery (food, market, vegetables, supermarket, pazardan, manav)
+              -- transport (taxi, uber, bus, metro, ulaşım, yol, benzin)
+              -- bill (electricity, water, internet, phone, kira, fatura)
+              -- entertainment (netflix, spotify, sinema, oyun, eğlence, tatil, holiday)
+              -- dining (restaurant, cafe, yemek, kahve)
+              -- shopping (clothes, electronics, alışveriş)
+              -- health (pharmacy, doctor, hastane, ilaç)
+              -- rent (rent, kira)
+              -- education (kurs, okul, eğitim)
+            - amount (numeric value, already extracted as ${amount} from the text)
+            - currency (TRY)
+            - payment method (cash, credit_card, debit_card)
+            - description (the full original text the user provided)
+            
             IMPORTANT RULES:
 
             1. Always try to determine a category.
             2. Never leave "category" as null unless it is absolutely impossible.
             3. If the category is not explicitly mentioned, infer it from context.
-
-            Categories:
-            - grocery (food, market, vegetables, supermarket, pazardan, manav)
-            - transport (taxi, uber, bus, metro, ulaşım, yol, benzin)
-            - bill (electricity, water, internet, phone, kira, fatura)
-            - entertainment (netflix, spotify, sinema, oyun, eğlence)
-            - dining (restaurant, cafe, yemek, kahve)
-            - shopping (clothes, electronics, alışveriş)
-            - health (pharmacy, doctor, hastane, ilaç)
-            - rent (rent, kira)
-            - education (kurs, okul, eğitim)
-
-            7. If nothing matches perfectly, create a new category and add it to the list above.
+            4. If nothing matches perfectly, create a new category and add it to the list above.
 
 
 
@@ -202,15 +226,14 @@ async function analyzeExpense(text) {
 
             Schema:
             {
-            "dateText": string | null,
-            "category": string,
-            "amount": number | null,
-            "currency": "TRY",
-            "paymentMethod": "cash" | "credit_card" | "debit_card" | null,
-            "description": string | null,
-            "type": "expense"
-            }
-        `,
+              "dateText": "string | null",
+              "category": "string",
+              "amount": ${amount || 'number'},  // Use the pre-extracted amount
+              "currency": "TRY",
+              "paymentMethod": "cash | credit_card | debit_card",
+              "description": "string (original user input)",
+              "type": "expense"
+            }`
       },
       {
         role: "user",
@@ -220,9 +243,21 @@ async function analyzeExpense(text) {
     temperature: 0,
   });
   const aiResponse = JSON.parse(response.choices[0].message.content);
+  console.log("🤖 AI'dan gelen yanıt:", aiResponse);
   console.log("🤖 AI'dan gelen kategori:", aiResponse.category); 
-  return JSON.parse(response.choices[0].message.content);
+  // Ensure description contains the full original text
+  if (aiResponse.description !== text) {
+    aiResponse.description = text;
+  }
+  
+  // Ensure amount is correctly set
+  if (amount && !aiResponse.amount) {
+    aiResponse.amount = amount;
+  }
+  
+  return aiResponse;
 }
+
 
 function resolveDate(dateText) {
   const today = new Date();
@@ -297,6 +332,7 @@ function getFormattedCategory(category) {
 }
 
 
+
 // In your normalizeExpense function, update the category handling:
 function normalizeExpense(raw) {
   // Get the AI's category suggestion
@@ -304,18 +340,34 @@ function normalizeExpense(raw) {
   
   // Find matching category or create a new one
   const category = findMatchingCategory(aiCategory);
+
+   // Format the amount
+  const amount = typeof raw.amount === "number" 
+    ? raw.amount 
+    : Number(String(raw.amount).replace(/[^\d]/g, "")) || 0;
   
+ // Format the amount with thousand separators
+  const formattedAmount = new Intl.NumberFormat('tr-TR', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2
+  }).format(amount) + ' TL';
+  // Create description with formatted amount
+  // Sadece sayısal değerleri çıkarıp, onun yerine biçimlendirilmiş hali koyuyoruz
+  const description = raw.description 
+  ? `${formattedAmount} - ${raw.description
+      .replace(/[\d.,]+\s*TL?/gi, '')  // Sadece sayısal ifadeleri kaldır
+      .replace(/\s+/g, ' ')  // Çoklu boşlukları tek boşluğa düşür
+      .trim()}`.replace(/\s-\s*$/, '')  // Sondaki gereksiz tire ve boşlukları kaldır
+  : formattedAmount;
   return {
     date: resolveDate(raw.dateText),
     category: getFormattedCategory(category),
-    amount: typeof raw.amount === "number" 
-      ? raw.amount 
-      : Number(String(raw.amount).replace(/[^\d]/g, "")) || 0,
+    amount: amount,
     currency: "TRY",
     paymentMethod: ["cash", "credit_card", "debit_card"].includes(raw.paymentMethod)
       ? raw.paymentMethod
       : "cash",
-    description: typeof raw.description === "string" ? raw.description : "",
+    description: description,
     type: "expense",
   };
 }
