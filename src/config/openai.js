@@ -1,8 +1,7 @@
 // src/config/openai.js
-import OpenAI from "openai";
+import OpenAI from 'openai';
 import dotenv from 'dotenv';
 dotenv.config({ path: './.env.local' });
-const openai = new OpenAI({
+export const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
-export { openai };
