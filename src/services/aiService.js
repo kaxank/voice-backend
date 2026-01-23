@@ -1,42 +1,49 @@
 import { openai } from '../config/openai.js';
 
+// aiService.js dosyasındaki ilgili kısmı şu şekilde güncelleyin:
+// Sayı sözlüğünü düzenleyelim
+const numberWords = {
+  'sıfır': 0, 'bir': 1, 'iki': 2, 'üç': 3, 'dört': 4, 'beş': 5,
+  'altı': 6, 'yedi': 7, 'sekiz': 8, 'dokuz': 9, 'on': 10,
+  'yirmi': 20, 'otuz': 30, 'kırk': 40, 'elli': 50,
+  'altmış': 60, 'yetmiş': 70, 'seksen': 80, 'doksan': 90,
+  'yüz': 100, 'bin': 1000, 'milyon': 1000000
+};
+function parseTurkishNumber(text) {
+  // Önce metindeki sayısal ifadeleri kontrol et (örn: "1500 TL")
+  const numberMatch = text.match(/(\d[\d.,]*)/);
+  if (numberMatch) {
+    const num = parseFloat(numberMatch[0].replace(/\./g, '').replace(',', '.'));
+    if (!isNaN(num)) return num;
+  }
+  // Türkçe metin olarak işle
+  const words = text
+    .toLowerCase()
+    .replace(/[^a-zA-ZğüşıöçĞÜŞİÖÇ\s]/g, '')
+    .split(/\s+/)
+    .filter(word => word in numberWords);
+  let total = 0;
+  let current = 0;
+  for (const word of words) {
+    const num = numberWords[word];
+    
+    if (num < 100) {
+      current += num;
+    } else if (num === 100) {
+      current = current === 0 ? 100 : current * 100;
+    } else if (num >= 1000) {
+      total += (current === 0 ? 1 : current) * num;
+      current = 0;
+    }
+  }
+  return total + current;
+}
 export const analyzeExpense = async (text) => {
   console.log("📝 Analiz ediliyor:", text);
   
-  // First, extract the amount from the text
-  const amountMatch = text.match(/\d+/);
-  let amount = amountMatch ? parseInt(amountMatch[0], 10) : null;
+  // Sayıyı çıkar
+  const amount = parseTurkishNumber(text);
   
-  // If no digits found, try to parse Turkish number words
-  if (!amount) {
-    const numberWords = {
-      'bir': 1, 'iki': 2, 'üç': 3, 'dört': 4, 'beş': 5,
-      'altı': 6, 'yedi': 7, 'sekiz': 8, 'dokuz': 9, 'on': 10,
-      'yirmi': 20, 'otuz': 30, 'kırk': 40, 'elli': 50,
-      'altmış': 60, 'yetmiş': 70, 'seksen': 90, 'doksan': 90,
-      'yüz': 100, 'bin': 1000, 'milyon': 1000000
-    };
-    // Simple Turkish number word parser
-    const words = text.toLowerCase().split(/\s+/);
-    let current = 0;
-    let total = 0;
-    
-    for (const word of words) {
-      const num = numberWords[word];
-      if (num !== undefined) {
-        if (num < 100) {
-          current += num;
-        } else if (num === 100) {
-          current = current === 0 ? 100 : current * 100;
-        } else {
-          current = (current === 0 ? 1 : current) * num;
-          total += current;
-          current = 0;
-        }
-      }
-    }
-    amount = total + current || null;
-  }
   const response = await openai.chat.completions.create({
     model: "gpt-4o-mini",
     messages: [
