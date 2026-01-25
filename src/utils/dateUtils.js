@@ -6,37 +6,71 @@ export function getMonthKey(date) {
   return `${d.getFullYear()}-${month}`;
 }
 
+import { parse, format, isValid } from 'date-fns';
+import { tr } from 'date-fns/locale/tr';
+
 export function resolveDate(dateText) {
   const today = new Date();
+  today.setHours(0, 0, 0, 0);
 
   if (!dateText) {
-    return today.toISOString().split("T")[0];
+    return format(today, 'yyyy-MM-dd');
   }
 
-  const text = dateText.toLowerCase();
+  const text = dateText.toLowerCase().trim();
 
-  if (text.includes("today") || text.includes("bugün")) {
-    return today.toISOString().split("T")[0];
+  // Handle relative dates
+  if (text.includes('today') || text.includes('bugün')) {
+    return format(today, 'yyyy-MM-dd');
   }
 
-  if (text.includes("yesterday") || text.includes("dün")) {
+  if (text.includes('yesterday') || text.includes('dün')) {
     const d = new Date(today);
     d.setDate(d.getDate() - 1);
-    return d.toISOString().split("T")[0];
+    return format(d, 'yyyy-MM-dd');
   }
 
-  if (text.includes("tomorrow") || text.includes("yarın")) {
+  if (text.includes('tomorrow') || text.includes('yarın')) {
     const d = new Date(today);
     d.setDate(d.getDate() + 1);
-    return d.toISOString().split("T")[0];
+    return format(d, 'yyyy-MM-dd');
   }
 
-  // AI tarih formatı verdiyse (örnek: 2026-01-12)
-  const parsed = new Date(dateText);
-  if (!isNaN(parsed.getTime())) {
-    return parsed.toISOString().split("T")[0];
+  // Try parsing specific date formats
+  const formats = [
+    'd MMMM yyyy',    // 11 Aralık 2025
+    'd MMMM',          // 22 mayıs (assumes current year)
+    'd MMM',           // 22 may (short month)
+    'MMMM d',          // aralık 13 (assumes current year)
+    'MMM d',           // ara 13 (short month)
+    'yyyy-MM-dd',      // 2025-12-11
+    'dd.MM.yyyy',      // 11.12.2025
+    'dd/MM/yyyy',      // 11/12/2025
+    'd MMMM yyyy',     // 11 Aralık 25 (with 2-digit year)
+    'd MMMM yy'        // 11 Aralık 25 (with 2-digit year)
+  ];
+
+  for (const fmt of formats) {
+    try {
+      const parsedDate = parse(text, fmt, today, { locale: tr });
+      if (isValid(parsedDate)) {
+        return format(parsedDate, 'yyyy-MM-dd');
+      }
+    } catch (e) {
+      // Try next format
+    }
   }
 
-  // fallback
-  return today.toISOString().split("T")[0];
+  // Try native Date parsing as fallback
+  try {
+    const parsed = new Date(dateText);
+    if (!isNaN(parsed.getTime())) {
+      return format(parsed, 'yyyy-MM-dd');
+    }
+  } catch (e) {
+    // Fall through to default
+  }
+
+  // If all else fails, return today's date
+  return format(today, 'yyyy-MM-dd');
 }

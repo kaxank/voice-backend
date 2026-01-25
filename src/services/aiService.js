@@ -1,6 +1,6 @@
 import { openai } from '../config/openai.js';
 
-// aiService.js dosyasındaki ilgili kısmı şu şekilde güncelleyin:
+
 // Sayı sözlüğünü düzenleyelim
 const numberWords = {
   'sıfır': 0, 'bir': 1, 'iki': 2, 'üç': 3, 'dört': 4, 'beş': 5,
@@ -10,18 +10,45 @@ const numberWords = {
   'yüz': 100, 'bin': 1000, 'milyon': 1000000
 };
 function parseTurkishNumber(text) {
-  // Önce metindeki sayısal ifadeleri kontrol et (örn: "1500 TL")
-  const numberMatch = text.match(/(\d[\d.,]*)/);
-  if (numberMatch) {
-    const num = parseFloat(numberMatch[0].replace(/\./g, '').replace(',', '.'));
+  // First, try to find a number with decimal part followed by TL (with . or , as decimal separator)
+  const decimalTlMatch = text.match(/(\d[\d,]*[.,]\d+)\s*TL/i);
+  if (decimalTlMatch) {
+    const numStr = decimalTlMatch[1].replace(/\./g, '').replace(',', '.');
+    const num = parseFloat(numStr);
     if (!isNaN(num)) return num;
   }
-  // Türkçe metin olarak işle
+  
+  // Then try to find a whole number followed by TL
+  const wholeTlMatch = text.match(/(\d[\d,]*)\s*TL/i);
+  if (wholeTlMatch) {
+    const numStr = wholeTlMatch[1].replace(/\./g, '').replace(',', '.');
+    const num = parseFloat(numStr);
+    if (!isNaN(num)) return num;
+  }
+  
+  // If no TL is found, look for any number with decimal part
+  const decimalMatch = text.match(/(\d[\d,]*[.,]\d+)/);
+  if (decimalMatch) {
+    const numStr = decimalMatch[1].replace(/\./g, '').replace(',', '.');
+    const num = parseFloat(numStr);
+    if (!isNaN(num)) return num;
+  }
+  
+  // If no decimal number is found, look for any whole number
+  const numberMatch = text.match(/(\d[\d,]*)/);
+  if (numberMatch) {
+    const numStr = numberMatch[1].replace(/\./g, '').replace(',', '.');
+    const num = parseFloat(numStr);
+    if (!isNaN(num)) return num;
+  }
+
+  // Rest of the function remains the same...
   const words = text
     .toLowerCase()
     .replace(/[^a-zA-ZğüşıöçĞÜŞİÖÇ\s]/g, '')
     .split(/\s+/)
     .filter(word => word in numberWords);
+  
   let total = 0;
   let current = 0;
   for (const word of words) {
@@ -78,6 +105,21 @@ export const analyzeExpense = async (text) => {
             2. Never leave "category" as null unless it is absolutely impossible.
             3. If the category is not explicitly mentioned, infer it from context.
             4. If nothing matches perfectly, create a new category and add it to the list above.
+
+            amount: The numeric value that appears with the currency (TL) in the text.
+            IMPORTANT: 
+            Always use the number that appears right before "TL" in the text.
+            - Always use the exact number that appears right before "TL" in the text, including decimal points.
+            - Preserve all decimal places (e.g., "1490.70 TL" should be 1490.70, not 1490).
+            - If the amount uses comma as decimal separator (e.g., "1.490,70 TL"), convert it to use a decimal point (1490.70).
+            - NEVER round or truncate decimal values.
+            - Example 1: For "12 Mart 2025, kuzenlerle evde yemek malzeme alımı 1490.70 TL", amount should be exactly 1490.70
+            - Example 2: For "1.490,70 TL market alışverişi", amount should be exactly 1490.70
+            - Example 3: For "28 Mart 2025 yemek yedim kredi kartı 1200 TL", amount should be 1200
+            - Example 4: For "1400 TL 28 Mart 2025 Yemek Yedim", amount should be 1400
+            - NEVER use the day number from the date as the amount
+            - If no amount is found with TL, only then use the first number you find
+            - currency: Always "TRY" (Turkish Lira)
 
 
 

@@ -1,3 +1,15 @@
+/*
+User uploads an audio file to /transcribe endpoint in index.js
+The audio is sent to OpenAI for transcription
+The transcribed text is passed to analyzeExpense in aiService.js
+analyzeExpense processes the text and returns structured expense data
+The route handler in index.js then saves this data and sends a response
+In summary:
+
+index.js handles the voice/audio part
+aiService.js handles the text analysis part
+The flow is: Voice → (index.js) → Text → (aiService.js) → Structured Data
+*/
 import express from "express";
 import multer from "multer";
 import path from "path";
@@ -40,7 +52,10 @@ app.post("/transcribe", upload.single("audio"), async (req, res) => {
 
     const text = transcription.text;
 
+    //analyzeExpense() fonksiyonu text parametresini kullanarak harcama verisini analiz ediyor
     const rawExpense = await analyzeExpense(text);
+    
+    //normalizeExpense() --> resolveDate() dateText parametresini kullanarak tarihi çözümlüyor
     const expense = normalizeExpense(rawExpense);
     console.log("📊 Raw expense:", rawExpense);
     console.log("📊 Normalized expense:", expense);

@@ -37,6 +37,7 @@ export const getMonthlyTotal = async (req, res) => {
     const { monthKey } = req.params;
     const total = await expenseService.calculateMonthlyTotal(monthKey);
     res.json({ total });
+    console.log("📊getMonthlyTotal()-expenseController.js Aylık toplam:", total);
   } catch (error) {
     console.error('❌ Aylık toplam alınırken hata:', error);
     res.status(500).json({ error: 'Aylık toplam hesaplanamadı' });
