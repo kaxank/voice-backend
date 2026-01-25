@@ -1,5 +1,5 @@
-import * as expenseService from '../services/expenseService';
-import * as aiService from '../services/aiService';
+import * as expenseService from '../services/expenseService.js';
+import * as aiService from '../services/aiService.js';
 
 export const createExpense = async (req, res) => {
   try {
