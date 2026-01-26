@@ -43,7 +43,7 @@ export const getExpenses = async (month, year) => {
       return { error };
     }
   
-    //console.log('📊 Veriler başarıyla çekildi:', data);
+    console.log('📊 Veriler başarıyla çekildi:', data);
     return { data };
 }
 
