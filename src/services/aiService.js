@@ -1,70 +1,142 @@
 import { openai } from '../config/openai.js';
 
+// ==============================
+// TURKISH NUMBER PARSER (FINAL)
+// ==============================
 
-// Sayı sözlüğünü düzenleyelim
 const numberWords = {
-  'sıfır': 0, 'bir': 1, 'iki': 2, 'üç': 3, 'dört': 4, 'beş': 5,
-  'altı': 6, 'yedi': 7, 'sekiz': 8, 'dokuz': 9, 'on': 10,
-  'yirmi': 20, 'otuz': 30, 'kırk': 40, 'elli': 50,
-  'altmış': 60, 'yetmiş': 70, 'seksen': 80, 'doksan': 90,
-  'yüz': 100, 'bin': 1000, 'milyon': 1000000
-};
-function parseTurkishNumber(text) {
-  // First, try to find a number with decimal part followed by TL (with . or , as decimal separator)
-  const decimalTlMatch = text.match(/(\d[\d,]*[.,]\d+)\s*TL/i);
-  if (decimalTlMatch) {
-    const numStr = decimalTlMatch[1].replace(/\./g, '').replace(',', '.');
-    const num = parseFloat(numStr);
-    if (!isNaN(num)) return num;
-  }
-  
-  // Then try to find a whole number followed by TL
-  const wholeTlMatch = text.match(/(\d[\d,]*)\s*TL/i);
-  if (wholeTlMatch) {
-    const numStr = wholeTlMatch[1].replace(/\./g, '').replace(',', '.');
-    const num = parseFloat(numStr);
-    if (!isNaN(num)) return num;
-  }
-  
-  // If no TL is found, look for any number with decimal part
-  const decimalMatch = text.match(/(\d[\d,]*[.,]\d+)/);
-  if (decimalMatch) {
-    const numStr = decimalMatch[1].replace(/\./g, '').replace(',', '.');
-    const num = parseFloat(numStr);
-    if (!isNaN(num)) return num;
-  }
-  
-  // If no decimal number is found, look for any whole number
-  const numberMatch = text.match(/(\d[\d,]*)/);
-  if (numberMatch) {
-    const numStr = numberMatch[1].replace(/\./g, '').replace(',', '.');
-    const num = parseFloat(numStr);
-    if (!isNaN(num)) return num;
-  }
+  'sıfır': 0,
+  'bir': 1,
+  'iki': 2,
+  'üç': 3,
+  'dört': 4,
+  'beş': 5,
+  'altı': 6,
+  'yedi': 7,
+  'sekiz': 8,
+  'dokuz': 9,
 
-  // Rest of the function remains the same...
-  const words = text
-    .toLowerCase()
-    .replace(/[^a-zA-ZğüşıöçĞÜŞİÖÇ\s]/g, '')
-    .split(/\s+/)
-    .filter(word => word in numberWords);
-  
+  'on': 10,
+  'yirmi': 20,
+  'otuz': 30,
+  'kırk': 40,
+  'elli': 50,
+  'altmış': 60,
+  'yetmiş': 70,
+  'seksen': 80,
+  'doksan': 90,
+
+  'yüz': 100,
+  'bin': 1000,
+  'milyon': 1000000
+};
+
+function parseWordsToNumber(words) {
   let total = 0;
   let current = 0;
+
   for (const word of words) {
-    const num = numberWords[word];
-    
-    if (num < 100) {
-      current += num;
-    } else if (num === 100) {
+    const value = numberWords[word];
+    if (value === undefined) continue;
+
+    if (value < 100) {
+      current += value;
+    } else if (value === 100) {
       current = current === 0 ? 100 : current * 100;
-    } else if (num >= 1000) {
-      total += (current === 0 ? 1 : current) * num;
+    } else {
+      total += (current === 0 ? 1 : current) * value;
       current = 0;
     }
   }
+
   return total + current;
 }
+
+function normalizeNumber(str) {
+  // hem nokta hem virgül → TR format
+  if (str.includes('.') && str.includes(',')) {
+    return parseFloat(str.replace(/\./g, '').replace(',', '.'));
+  }
+
+  // sadece nokta
+  if (str.includes('.') && !str.includes(',')) {
+    const parts = str.split('.');
+    if (parts[parts.length - 1].length === 3) {
+      return parseFloat(str.replace(/\./g, ''));
+    }
+    return parseFloat(str);
+  }
+
+  // sadece virgül
+  if (str.includes(',')) {
+    return parseFloat(str.replace(',', '.'));
+  }
+
+  return parseFloat(str);
+}
+
+export function parseTurkishNumber(text) {
+  const lower = text.toLowerCase();
+
+  // 1️⃣ TL + KURUŞ (yazıyla)
+  if (lower.includes('kuruş')) {
+    const tlPart = lower.match(/(.+?)\s*tl/);
+    const kurusPart = lower.match(/(.+?)\s*kuruş/);
+
+    const tl = tlPart ? parseTurkishNumber(tlPart[1]) : 0;
+    const kurus = kurusPart ? parseTurkishNumber(kurusPart[1]) : 0;
+
+    return Number((tl + kurus / 100).toFixed(2));
+  }
+
+  // 2️⃣ YAZIYLA ONDALIK (nokta / virgül)
+  if (lower.includes('nokta') || lower.includes('virgül')) {
+    const splitter = lower.includes('nokta') ? 'nokta' : 'virgül';
+    const [left, right] = lower.split(splitter);
+
+    const whole = parseWordsToNumber(
+      left.replace(/[^a-zğüşıöç\s]/gi, '').split(/\s+/)
+    );
+
+    const decimal = parseWordsToNumber(
+      right.replace(/[^a-zğüşıöç\s]/gi, '').split(/\s+/)
+    );
+
+    return Number(`${whole}.${decimal.toString().padStart(2, '0')}`);
+  }
+
+  // 3️⃣ RAKAM + TL (+ opsiyonel ,kuruş)
+  const tlMatch = lower.match(
+    /(\d[\d.,]*)(?:\s*(?:tl|₺|try))(?:\s*,\s*(\d{1,2}))?/
+  );
+
+  if (tlMatch) {
+    const whole = normalizeNumber(tlMatch[1]);
+    const decimal = tlMatch[2] ? parseInt(tlMatch[2], 10) / 100 : 0;
+    return Number((whole + decimal).toFixed(2));
+  }
+
+  // 4️⃣ RAKAMLI ONDALIK
+  const decimalMatch = lower.match(/(\d[\d.,]*[.,]\d+)/);
+  if (decimalMatch) {
+    return Number(normalizeNumber(decimalMatch[1]).toFixed(2));
+  }
+
+  // 5️⃣ SADE RAKAM
+  const plainNumber = lower.match(/\b\d+\b/);
+  if (plainNumber) {
+    return Number(parseInt(plainNumber[0], 10).toFixed(2));
+  }
+
+  // 6️⃣ TAMAMEN YAZIYLA
+  const words = lower
+    .replace(/[^a-zğüşıöç\s]/gi, '')
+    .split(/\s+/);
+
+  return Number(parseWordsToNumber(words).toFixed(2));
+}
+
+
 export const analyzeExpense = async (text) => {
   console.log("📝 Analiz ediliyor:", text);
   
@@ -82,6 +154,26 @@ export const analyzeExpense = async (text) => {
             Your task is to extract structured expense data from user text that comes from speech-to-text transcription.
             The transcription may be informal, incomplete, or imperfect.
 
+            The numeric amount has ALREADY been extracted from the text as: ${amount}
+            DO NOT extract or calculate any other amount from the text.
+            The amount ${amount} has been professionally parsed from Turkish number words.
+            DO NOT override this value under any circumstances.
+
+            CRITICAL RULE:
+            - You MUST use this exact amount value.
+            - You are NOT allowed to calculate, infer, or modify the amount.
+            - Do NOT extract numbers from the text.
+            - The amount field is READ-ONLY.
+
+            Your tasks:
+            - Determine category
+            - Determine payment method
+            - Determine currency
+            - Extract dateText if present
+            - Copy full original text into description
+
+            If no currency is mentioned, use TRY.
+
 
             - date: if mentioned, otherwise use today's date
             - category: 
@@ -94,10 +186,10 @@ export const analyzeExpense = async (text) => {
               -- health (pharmacy, doctor, hastane, ilaç)
               -- rent (rent, kira)
               -- education (kurs, okul, eğitim)
-            - amount (numeric value, already extracted as ${amount} from the text)
-            - currency (TRY)
-            - payment method (cash, credit_card, debit_card)
-            - description (the full original text the user provided)
+            - amount: The numeric amount has ALREADY been extracted from the text as: ${amount}
+            - currency: (TRY, EUR, USD) 
+            - payment method: (cash, credit_card, debit_card)
+            - description: (the full original text the user provided)
             
             IMPORTANT RULES:
 
@@ -106,29 +198,23 @@ export const analyzeExpense = async (text) => {
             3. If the category is not explicitly mentioned, infer it from context.
             4. If nothing matches perfectly, create a new category and add it to the list above.
 
-            amount: The numeric value that appears with the currency (TL) in the text.
-            IMPORTANT: 
-            Always use the number that appears right before "TL" in the text.
-            - Always use the exact number that appears right before "TL" in the text, including decimal points.
-            - Preserve all decimal places (e.g., "1490.70 TL" should be 1490.70, not 1490).
-            - If the amount uses comma as decimal separator (e.g., "1.490,70 TL"), convert it to use a decimal point (1490.70).
-            - NEVER round or truncate decimal values.
+            amount:  The numeric value already extracted as ${amount} from the text.
+              CRITICAL: You MUST use exactly ${amount} as the amount. Do not extract or calculate any other amount from the text.
+              The amount ${amount} has been professionally parsed from Turkish number words.
+              DO NOT override this value under any circumstances.
+            
             - Example 1: For "12 Mart 2025, kuzenlerle evde yemek malzeme alımı 1490.70 TL", amount should be exactly 1490.70
             - Example 2: For "1.490,70 TL market alışverişi", amount should be exactly 1490.70
             - Example 3: For "28 Mart 2025 yemek yedim kredi kartı 1200 TL", amount should be 1200
             - Example 4: For "1400 TL 28 Mart 2025 Yemek Yedim", amount should be 1400
-            - NEVER use the day number from the date as the amount
-            - If no amount is found with TL, only then use the first number you find
-            - currency: Always "TRY" (Turkish Lira)
-
-
+            - currency: "TRY", "EUR", "USD" 
+            - if no currency is found, use "TRY"
+            - the number combination before the currency should be used as the amount
+            
 
             If the user mentions a date (like "today", "yesterday", "tomorrow", "12 January", "12/01/2026"),
             extract it as a string field called "dateText".
             If no date is mentioned, set "dateText" to null.
-
-
-
 
             Return ONLY valid JSON.
             Do not explain anything.
@@ -139,12 +225,13 @@ export const analyzeExpense = async (text) => {
             {
               "dateText": "string | null",
               "category": "string",
-              "amount": ${amount || 'number'},  // Use the pre-extracted amount
-              "currency": "TRY",
+              "amount": ${amount},
+              "currency": "TRY | EUR | USD",
               "paymentMethod": "cash | credit_card | debit_card",
-              "description": "string (original user input)",
+              "description": "string",
               "type": "expense"
             }`
+
       },
       {
         role: "user",

@@ -1,5 +1,11 @@
 import { supabase } from '../config/supabase.js';
 
+// Dosyanın en üstüne bu fonksiyonu ekle
+const getMonthEndDate = (year, month) => {
+  const lastDay = new Date(parseInt(year), parseInt(month), 0).getDate();
+  return `${year}-${month.padStart(2, '0')}-${lastDay.toString().padStart(2, '0')}`;
+};
+
 export const saveExpense = async (expense) => {
   // Veritabanına uygun formata dönüştür
   const dbExpense = {
@@ -28,9 +34,8 @@ export const saveExpense = async (expense) => {
   }
 
 export const getExpenses = async (month, year) => {
-  const startDate = `${year}-${month.padStart(2, '0')}-01`;
-  const endDate = `${year}-${month.padStart(2, '0')}-31`;
-
+    const startDate = `${year}-${month.padStart(2, '0')}-01`;
+    const endDate = getMonthEndDate(year, month);
  
     const { data, error } = await supabase
       .from('expenses')
@@ -43,7 +48,7 @@ export const getExpenses = async (month, year) => {
       return { error };
     }
   
-    console.log('📊 Veriler başarıyla çekildi:', data);
+    console.log('📊 Veriler başarıyla çekildi:');
     return { data };
 }
 

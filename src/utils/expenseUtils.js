@@ -64,7 +64,7 @@ export function normalizeExpense(raw) {
   return {
     date: resolveDate(raw.dateText),
     category: getFormattedCategory(category),
-    amount: amount,
+    amount: Number(raw.amount.toFixed(2)), // ⛔ normalizeAmount YOK
     currency: "TRY",
     paymentMethod: ["cash", "credit_card", "debit_card"].includes(raw.paymentMethod)
       ? raw.paymentMethod
