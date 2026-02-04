@@ -1,6 +1,38 @@
 import { openai } from '../config/openai.js';
 
 // ==============================
+// CURRENCY DETECTOR (AI INDEPENDENT)
+// ==============================
+function detectCurrency(text) {
+  const lower = text.toLowerCase();
+
+  if (lower.includes('€') || lower.includes('euro') || lower.includes('eur')) {
+    return 'EUR';
+  }
+
+  if (
+    lower.includes('$') ||
+    lower.includes('dolar') ||
+    lower.includes('usd') ||
+    lower.includes('amerikan doları')
+  ) {
+    return 'USD';
+  }
+
+  if (
+    lower.includes('₺') ||
+    lower.includes('tl') ||
+    lower.includes('lira') ||
+    lower.includes('try')
+  ) {
+    return 'TRY';
+  }
+
+  return 'TRY';
+}
+
+
+// ==============================
 // TURKISH NUMBER PARSER (FINAL)
 // ==============================
 
@@ -142,6 +174,8 @@ export const analyzeExpense = async (text) => {
   
   // Sayıyı çıkar
   const amount = parseTurkishNumber(text);
+  const currency = detectCurrency(text);
+
   
   const response = await openai.chat.completions.create({
     model: "gpt-4o-mini",
@@ -155,6 +189,7 @@ export const analyzeExpense = async (text) => {
             The transcription may be informal, incomplete, or imperfect.
 
             The numeric amount has ALREADY been extracted from the text as: ${amount}
+            The currency has ALREADY been detected from the text as: ${currency}
             DO NOT extract or calculate any other amount from the text.
             The amount ${amount} has been professionally parsed from Turkish number words.
             DO NOT override this value under any circumstances.
@@ -163,7 +198,9 @@ export const analyzeExpense = async (text) => {
             - You MUST use this exact amount value.
             - You are NOT allowed to calculate, infer, or modify the amount.
             - Do NOT extract numbers from the text.
-            - The amount field is READ-ONLY.
+            - amount is READ-ONLY and MUST be ${amount}
+            - currency is READ-ONLY and MUST be ${currency}
+            - You are NOT allowed to infer, extract, or modify amount or currency
 
             Your tasks:
             - Determine category
@@ -171,10 +208,6 @@ export const analyzeExpense = async (text) => {
             - Determine currency
             - Extract dateText if present
             - Copy full original text into description
-
-            If no currency is mentioned, use TRY.
-
-
             - date: if mentioned, otherwise use today's date
             - category: 
               -- grocery (food, market, vegetables, supermarket, pazardan, manav)
@@ -226,7 +259,7 @@ export const analyzeExpense = async (text) => {
               "dateText": "string | null",
               "category": "string",
               "amount": ${amount},
-              "currency": "TRY | EUR | USD",
+              "currency": "${currency}",
               "paymentMethod": "cash | credit_card | debit_card",
               "description": "string",
               "type": "expense"
