@@ -12,7 +12,7 @@ The flow is: Voice → (index.js) → Text → (aiService.js) → Structured Dat
 */
 import { openai } from '../config/openai.js';
 import { analyzeExpense } from '../services/aiService.js';
-import { saveExpense, calculateMonthlyTotal } from '../services/expenseService.js';
+import { saveExpense, calculateMonthlyTotalByCurrency } from '../services/expenseService.js';
 import { getMonthKey, normalizeExpense } from '../utils/index.js';
 import fs from 'fs';
 export const createExpenseFromAudio = async (req, res) => {
@@ -43,10 +43,11 @@ export const createExpenseFromAudio = async (req, res) => {
     }
 
     const monthKey = getMonthKey(expense.date);
+    console.log("voiceRecordController.js createExpenseFromAudio() fonksiyonu");
     console.log("📅 Month key:", monthKey);
     
-    const monthlyTotal = await calculateMonthlyTotal(monthKey);
-    console.log("💰 Aylık toplam harcama:", monthlyTotal);
+    const monthlyTotal = await calculateMonthlyTotalByCurrency(monthKey);
+    //console.log("💰 Aylık toplam harcama:", monthlyTotal);
     
     // geçici dosyayı sil
     fs.unlinkSync(filePath);

@@ -20,10 +20,13 @@ const upload = multer({ storage });
 //USED ROUTES
 router.post('/transcribe', upload.single('audio'), createExpenseFromAudio);
 
+
 //UNUSED ROUTES
 router.post('/', expenseController.createExpense);
 router.get('/', expenseController.listExpenses);
 router.post('/analyze', expenseController.analyzeText);
-router.get('/monthly-total/:monthKey', expenseController.getMonthlyTotal);
+//router.get('/monthly-total-by-currency/:monthKey', expenseController.getMonthlyTotalByCurrency); 
+//router.get('/monthly-total/:monthKey', expenseController.getMonthlyTotal);
+
 
 export default router;

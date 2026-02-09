@@ -52,15 +52,32 @@ export const getExpenses = async (month, year) => {
     return { data };
 }
 
-export const calculateMonthlyTotal = async (monthKey) => {
+export const calculateMonthlyTotalByCurrency = async (monthKey) => {
   const [year, month] = monthKey.split('-');
   const { data, error } = await getExpenses(month, year);
   if (error) {
-    console.error('❌ Aylık toplam hesaplanırken hata:', error);
-    throw error; // Hata durumunda hatayı fırlatıyoruz
+    console.error('❌ Aylık toplam para birimine göre hesaplanırken hata:', error);
+    throw error;
   }
-  const total = data?.reduce((sum, e) => sum + (e.amount || 0), 0) || 0;
-  console.log(`💰 ${monthKey} toplam harcama:`, total);
-  return total;
+  
+  // Para birimlerine göre grupla
+  const totalsByCurrency = data?.reduce((acc, expense) => {
+    const currency = expense.currency || 'TRY';
+    if (!acc[currency]) {
+      acc[currency] = 0;
+    }
+    acc[currency] += expense.amount || 0;
+    return acc;
+  }, {}) || {};
+  
+  console.log(`💰 ${monthKey} para birimine göre toplamlar:`, totalsByCurrency);
+  return totalsByCurrency;
+};
+
+// Mevcut fonksiyonu koru (geriye dönük uyumluluk için)
+export const calculateMonthlyTotal = async (monthKey) => {
+  const totalsByCurrency = await calculateMonthlyTotalByCurrency(monthKey);
+  // Tüm para birimlerini toplam (eski davranış)
+  return Object.values(totalsByCurrency).reduce((sum, total) => sum + total, 0);
 };
   
